@@ -24,7 +24,7 @@ import Link from "next/link";
 
 export default function TermsPage() {
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col min-h-screen w-screen">
       <div className="flex items-center p-3 sm:p-4 border-b w-full">
         <Link href="/">
           <Button
