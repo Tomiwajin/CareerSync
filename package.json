@@ -26,6 +26,7 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-toast": "^1.2.14",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "@rive-app/react-canvas": "^4.23.4",
     "@supabase/supabase-js": "^2.56.0",
     "@tanstack/react-table": "^8.21.3",
     "@vercel/analytics": "^1.5.0",
