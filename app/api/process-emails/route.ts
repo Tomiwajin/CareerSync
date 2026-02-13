@@ -4,17 +4,27 @@ import { cookies } from "next/headers";
 import { Client } from "@gradio/client";
 import { shouldExcludeEmail } from "@/lib/email-utils";
 
-interface ClassificationResult {
-  label: string;
-  score: number;
-  success?: boolean;
+interface ProcessedResult {
+  classification: {
+    label: string;
+    score: number;
+    success: boolean;
+  };
+  extraction: {
+    company: string;
+    role: string;
+    success: boolean;
+  } | null;
 }
 
-interface ExtractionResult {
-  company: string;
-  role: string;
-  success?: boolean;
+interface ProcessBatchResponse {
+  results: ProcessedResult[];
+  total: number;
+  job_related: number;
 }
+
+// Reduced delay for better performance
+const BATCH_DELAY_MS = 150;
 
 function sendProgress(
   encoder: TextEncoder,
@@ -33,80 +43,58 @@ function sendProgress(
   controller.enqueue(encoder.encode(`data: ${JSON.stringify(progress)}\n\n`));
 }
 
-async function classifyEmailsBatch(
-  emails: Array<{ text: string; id: string }>,
-  progressCallback?: (current: number, total: number) => void
-): Promise<Map<string, ClassificationResult>> {
-  const results = new Map<string, ClassificationResult>();
-  const maxBatchSize = 100;
+// Get or create a shared Gradio client
+async function getGradioClient(): Promise<Client> {
   const spaceUrl = process.env.HUGGINGFACE_SPACE_URL;
   if (!spaceUrl) throw new Error("HuggingFace Space URL not configured");
-
-  const client = await Client.connect(spaceUrl);
-  for (let i = 0; i < emails.length; i += maxBatchSize) {
-    const batch = emails.slice(i, i + maxBatchSize);
-    progressCallback?.(i, emails.length);
-
-    const emailTexts = batch.map((email) => email.text);
-    const result = await client.predict("/classify_batch", {
-      emails_json: JSON.stringify(emailTexts),
-    });
-
-    const batchData = JSON.parse(result.data as string);
-    if (!batchData.results || !Array.isArray(batchData.results))
-      throw new Error(batchData.error || "Invalid batch response format");
-
-    batch.forEach((email, index) => {
-      const res = batchData.results[index];
-      results.set(email.id, {
-        label: res?.label || "other",
-        score: res?.score || 0,
-        success: res?.success ?? false,
-      });
-    });
-
-    if (i + maxBatchSize < emails.length)
-      await new Promise((r) => setTimeout(r, 1000));
-  }
-
-  progressCallback?.(emails.length, emails.length);
-  return results;
+  return Client.connect(spaceUrl);
 }
 
-async function extractJobInfoBatch(
+/**
+ * Process emails using the combined /process_batch endpoint
+ * This does classification AND extraction in ONE API call
+ */
+async function processEmailsBatch(
+  client: Client,
   emails: Array<{ text: string; id: string }>,
+  threshold: number,
   progressCallback?: (current: number, total: number) => void
-): Promise<Map<string, ExtractionResult>> {
-  const results = new Map<string, ExtractionResult>();
+): Promise<Map<string, ProcessedResult>> {
+  const results = new Map<string, ProcessedResult>();
   const maxBatchSize = 100;
-  const spaceUrl = process.env.HUGGINGFACE_SPACE_URL;
-  if (!spaceUrl) throw new Error("HuggingFace Space URL not configured");
 
-  const client = await Client.connect(spaceUrl);
   for (let i = 0; i < emails.length; i += maxBatchSize) {
     const batch = emails.slice(i, i + maxBatchSize);
     progressCallback?.(i, emails.length);
 
     const emailTexts = batch.map((email) => email.text);
-    const result = await client.predict("/extract_batch", {
+
+    const result = await client.predict("/process_batch", {
       emails_json: JSON.stringify(emailTexts),
+      threshold: threshold,
     });
 
-    const batchData = JSON.parse(result.data as string);
-    if (!batchData.results || !Array.isArray(batchData.results))
-      throw new Error(batchData.error || "Invalid batch response format");
+    const batchData: ProcessBatchResponse = JSON.parse(result.data as string);
+
+    if (!batchData.results || !Array.isArray(batchData.results)) {
+      throw new Error("Invalid batch response format");
+    }
 
     batch.forEach((email, index) => {
       const res = batchData.results[index];
       results.set(email.id, {
-        company: res?.company || "Unknown",
-        role: res?.role || "Unknown",
-        success: res?.success ?? false,
+        classification: {
+          label: res?.classification?.label || "other",
+          score: res?.classification?.score || 0,
+          success: res?.classification?.success ?? false,
+        },
+        extraction: res?.extraction || null,
       });
     });
 
-    if (i + maxBatchSize < emails.length)
-      await new Promise((r) => setTimeout(r, 1000));
+    if (i + maxBatchSize < emails.length) {
+      await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
+    }
   }
 
   progressCallback?.(emails.length, emails.length);
@@ -145,7 +133,7 @@ function extractEmailBody(payload: gmail_v1.Schema$MessagePart): string {
 async function fetchEmailsInBatches(
   gmail: gmail_v1.Gmail,
   allMessages: gmail_v1.Schema$Message[],
-  batchSize = 10
+  batchSize = 50
 ) {
   const results: gmail_v1.Schema$Message[] = [];
   for (let i = 0; i < allMessages.length; i += batchSize) {
@@ -159,7 +147,9 @@ async function fetchEmailsInBatches(
       )
     );
     results.push(...(responses.filter(Boolean) as gmail_v1.Schema$Message[]));
-    await new Promise((r) => setTimeout(r, 500));
+    if (i + batchSize < allMessages.length) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
   }
   return results;
 }
@@ -189,17 +179,22 @@ export async function POST(request: NextRequest) {
           "GOOGLE_REDIRECT_URI",
           "HUGGINGFACE_SPACE_URL",
         ];
-        for (const envVar of requiredEnv)
+        for (const envVar of requiredEnv) {
           if (!process.env[envVar]) throw new Error(`${envVar} not configured`);
+        }
 
-        if (!startDate || !endDate)
+        if (!startDate || !endDate) {
           throw new Error("Start and end date required");
+        }
 
         const start = new Date(startDate);
         const end = new Date(endDate);
-        if (isNaN(start.getTime()) || isNaN(end.getTime()))
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
           throw new Error("Invalid date format");
-        if (start >= end) throw new Error("Start date must be before end date");
+        }
+        if (start >= end) {
+          throw new Error("Start date must be before end date");
+        }
 
         const cookieStore = await cookies();
         const accessToken = cookieStore.get("gmail_access_token")?.value;
@@ -244,20 +239,25 @@ export async function POST(request: NextRequest) {
           );
         } while (pageToken);
 
-        sendProgress(
-          encoder,
-          controller,
-          "Retrieving message details",
-          20,
-          100
-        );
+        sendProgress(encoder, controller, "Retrieving message details", 20, 100);
         const detailedMessages = await fetchEmailsInBatches(
           gmail,
           allMessages,
           100
         );
 
-        const emailsForClassification = [];
+        const emailsToProcess: Array<{
+          text: string;
+          id: string;
+          metadata: {
+            from: string;
+            subject: string;
+            date: Date;
+            body: string;
+            snippet: string;
+          };
+        }> = [];
+
         for (const email of detailedMessages) {
           const headers = email.payload?.headers || [];
           const from = headers.find((h) => h.name === "From")?.value || "";
@@ -267,78 +267,64 @@ export async function POST(request: NextRequest) {
           const date = new Date(Number.parseInt(email.internalDate ?? "0"));
           const body = email.payload ? extractEmailBody(email.payload) : "";
           const text = `Subject: ${subject}\n\n${body.substring(0, 1000)}`;
-          emailsForClassification.push({
+          emailsToProcess.push({
             text,
             id: email.id!,
-            metadata: {
-              from,
-              subject,
-              date,
-              body,
-              snippet: email.snippet || "",
-            },
+            metadata: { from, subject, date, body, snippet: email.snippet || "" },
           });
         }
 
-        sendProgress(encoder, controller, "Classifying emails", 40, 100);
-        const classifications = await classifyEmailsBatch(
-          emailsForClassification,
+        sendProgress(encoder, controller, "Connecting to AI models", 35, 100);
+        const gradioClient = await getGradioClient();
+
+        // Use combined endpoint - classify AND extract in ONE call
+        sendProgress(encoder, controller, "Processing emails with AI", 40, 100);
+        const processedResults = await processEmailsBatch(
+          gradioClient,
+          emailsToProcess,
+          classificationThreshold,
           (c, t) =>
             sendProgress(
               encoder,
               controller,
-              `Classifying (${c}/${t})`,
-              40 + (c / t) * 20,
+              `Processing (${c}/${t})`,
+              40 + (c / t) * 50,
               100
             )
         );
 
-        const jobRelated = [];
-        for (const email of emailsForClassification) {
-          const cls = classifications.get(email.id);
-          if (!cls?.success) continue;
+        // Build final applications from combined results
+        const applications = [];
+        for (const email of emailsToProcess) {
+          const result = processedResults.get(email.id);
+          if (!result) continue;
+
+          const { classification, extraction } = result;
+
+          // Only include job-related emails
           const isJob =
-            jobLabels.includes(cls.label.toLowerCase()) &&
-            cls.score >= classificationThreshold;
-          if (isJob) jobRelated.push(email);
-        }
+            classification.success &&
+            jobLabels.includes(classification.label.toLowerCase()) &&
+            classification.score >= classificationThreshold;
 
-        sendProgress(
-          encoder,
-          controller,
-          `Extracting job info (${jobRelated.length} emails)`,
-          70,
-          100
-        );
-        const extractions = await extractJobInfoBatch(jobRelated, (c, t) =>
-          sendProgress(
-            encoder,
-            controller,
-            `Extracting (${c}/${t})`,
-            70 + (c / t) * 20,
-            100
-          )
-        );
+          if (!isJob) continue;
 
-        const applications = jobRelated.map((email) => {
-          const cls = classifications.get(email.id);
-          const ext = extractions.get(email.id);
           const { from, subject, date, body } = email.metadata;
-          return {
+          applications.push({
             id: `gmail-${email.id}`,
-            company: ext?.company || "Unknown",
-            role: ext?.role || "Unknown",
-            status: cls?.label.toLowerCase() || "other",
+            company: extraction?.company || "Unknown",
+            role: extraction?.role || "Unknown",
+            status: classification.label.toLowerCase(),
             email: from.match(/<(.+)>/)?.[1] || from,
             date: date.toISOString(),
             subject,
             bodyPreview: body.substring(0, 200),
             classification: {
-              label: cls?.label || "unknown",
-              confidence: cls?.score || 0,
+              label: classification.label,
+              confidence: classification.score,
             },
-          };
-        });
+          });
+        }
 
         sendProgress(encoder, controller, "Complete", 100, 100);
         controller.enqueue(
