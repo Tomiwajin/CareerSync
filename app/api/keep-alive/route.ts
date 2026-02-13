@@ -1,12 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
-/**
- * Keep-alive endpoint to prevent Supabase from pausing.
- * Set up a cron job (e.g., cron-job.org) to hit this every 5 days.
- *
- * Example cron schedule: 0 0 */5 * * (every 5 days at midnight)
- */
+// Keep-alive endpoint to prevent Supabase from pausing.
+// Set up a cron job (e.g., cron-job.org) to hit this every day or every few days.
 export async function GET() {
   const startTime = Date.now();
 
