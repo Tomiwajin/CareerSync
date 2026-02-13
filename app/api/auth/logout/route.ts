@@ -9,6 +9,7 @@ export async function POST() {
     cookieStore.delete("gmail_access_token");
     cookieStore.delete("gmail_refresh_token");
     cookieStore.delete("user_email");
+    cookieStore.delete("user_id");
 
     return NextResponse.json({
       success: true,

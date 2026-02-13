@@ -147,7 +147,7 @@ export default function HomePage() {
     useState<ProcessingProgress | null>(null);
 
   // Model warmup status
-  const { isModelReady, modelStatus, handleStatusChange } = useModelStatus();
+  const { modelStatus, handleStatusChange } = useModelStatus();
 
   const handlePresetClick = (preset: DatePreset) => {
     const { start, end } = preset.getValue();

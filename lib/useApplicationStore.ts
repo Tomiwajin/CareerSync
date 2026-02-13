@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { shouldExcludeEmail } from "./email-utils";
 
 export type JobStatus =
   | "applied"
@@ -42,49 +43,6 @@ interface ApplicationStore {
   setAuthStatus: (isAuthenticated: boolean, email: string) => void;
   checkAuthStatus: () => Promise<void>;
   logout: () => void;
-}
-
-// Helper function to check if email should be excluded
-function shouldExcludeEmail(
-  emailAddress: string,
-  excludedEmails: string[]
-): boolean {
-  if (!excludedEmails || excludedEmails.length === 0) {
-    return false;
-  }
-
-  const normalizedEmail = emailAddress.toLowerCase().trim();
-  const extractedEmail =
-    normalizedEmail.match(/<(.+)>/)?.[1] || normalizedEmail;
-
-  return excludedEmails.some((excludedEmail) => {
-    const normalizedExcluded = excludedEmail.toLowerCase().trim();
-
-    // Exact match
-    if (extractedEmail === normalizedExcluded) {
-      return true;
-    }
-
-    // Domain match
-    if (
-      normalizedExcluded.startsWith("@") &&
-      extractedEmail.endsWith(normalizedExcluded)
-    ) {
-      return true;
-    }
-
-    if (normalizedExcluded.startsWith("*@")) {
-      const domain = normalizedExcluded.substring(2);
-      return extractedEmail.endsWith(`@${domain}`);
-    }
-
-    // Contains match
-    if (extractedEmail.includes(normalizedExcluded)) {
-      return true;
-    }
-
-    return false;
-  });
 }
 
 export const useApplicationStore = create<ApplicationStore>()(

@@ -12,7 +12,6 @@ interface ModelStatusBannerProps {
 export function ModelStatusBanner({ onStatusChange }: ModelStatusBannerProps) {
   const [status, setStatus] = useState<ModelStatus>("idle");
   const [message, setMessage] = useState<string>("");
-  const [responseTime, setResponseTime] = useState<number | null>(null);
   const [isVisible, setIsVisible] = useState(false);
 
   const warmupModels = useCallback(async () => {
@@ -26,7 +25,6 @@ export function ModelStatusBanner({ onStatusChange }: ModelStatusBannerProps) {
 
       if (response.ok && data.status === "ready") {
         setStatus("ready");
-        setResponseTime(data.responseTime);
         setMessage(
           data.wasColdStart
             ? `Models loaded! (took ${Math.round(data.responseTime / 1000)}s)`

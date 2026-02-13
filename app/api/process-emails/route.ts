@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { google, gmail_v1 } from "googleapis";
 import { cookies } from "next/headers";
 import { Client } from "@gradio/client";
+import { shouldExcludeEmail } from "@/lib/email-utils";
 
 interface ClassificationResult {
   label: string;
@@ -139,20 +140,6 @@ function extractEmailBody(payload: gmail_v1.Schema$MessagePart): string {
     return text;
   };
   return extractFromPart(payload).trim();
-}
-
-function shouldExcludeEmail(emailAddress: string, excludedEmails: string[]) {
-  if (!excludedEmails?.length) return false;
-  const normalizedEmail = emailAddress.toLowerCase().trim();
-  const extracted = normalizedEmail.match(/<(.+)>/)?.[1] || normalizedEmail;
-  return excludedEmails.some((ex) => {
-    const n = ex.toLowerCase().trim();
-    return (
-      extracted === n ||
-      (n.startsWith("@") && extracted.endsWith(n)) ||
-      extracted.includes(n)
-    );
-  });
 }
 
 async function fetchEmailsInBatches(
