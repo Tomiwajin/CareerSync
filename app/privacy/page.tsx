@@ -217,7 +217,7 @@ export default function PrivacyPage() {
                   <div className="border rounded-lg p-3 sm:p-4 bg-muted/30">
                     <h4 className="font-semibold mb-2 flex items-center gap-2 text-sm sm:text-base">
                       <Eye className="w-3 h-3 sm:w-4 sm:h-4" />
-                      Processed (Not Stored)
+                      Processed (Not Stored on Server)
                     </h4>
                     <Badge variant="secondary" className="mb-2 sm:mb-3 text-xs">
                       Real-time Only
@@ -226,8 +226,12 @@ export default function PrivacyPage() {
                       <li>• Gmail message content</li>
                       <li>• Email metadata (subject, sender, date)</li>
                       <li>• AI classification results</li>
-                      <li>• Extracted job application data</li>
+                      <li>• Extracted job application data*</li>
                     </ul>
+                    <p className="text-xs text-muted-foreground mt-2 italic">
+                      *Job application results are stored locally in your browser
+                      (localStorage) for your convenience. Clear browser data to remove.
+                    </p>
                   </div>
                 </div>
 
@@ -325,9 +329,9 @@ export default function PrivacyPage() {
                     </h4>
                     <div className="space-y-1 sm:space-y-2 text-xs sm:text-sm text-muted-foreground">
                       <p>• AI email classification</p>
-                      <p>• Our custom model - no data logging</p>
+                      <p>• Our custom fine-tuned models</p>
                       <p>• Real-time processing only</p>
-                      <p>• No email content retention</p>
+                      <p>• Subject to HuggingFace&rsquo;s Privacy Policy</p>
                     </div>
                   </div>
                 </div>
@@ -517,7 +521,7 @@ export default function PrivacyPage() {
                     Compliance Standards
                   </h4>
                   <div className="flex flex-wrap gap-2">
-                    {["CCPA", "Google API Policy", "SOC 2"].map((standard) => (
+                    {["CCPA", "GDPR", "Google API Policy"].map((standard) => (
                       <Badge
                         key={standard}
                         variant="secondary"

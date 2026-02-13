@@ -31,6 +31,10 @@ import {
 import { CalendarIcon, Search, RefreshCw, Mail, ArrowUp } from "lucide-react";
 import { format, subDays, subMonths } from "date-fns";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import {
+  ModelStatusBanner,
+  useModelStatus,
+} from "@/components/ModelStatusBanner";
 
 interface JobApplication {
   id: string;
@@ -141,6 +145,9 @@ export default function HomePage() {
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [processingProgress, setProcessingProgress] =
     useState<ProcessingProgress | null>(null);
+
+  // Model warmup status
+  const { isModelReady, modelStatus, handleStatusChange } = useModelStatus();
 
   const handlePresetClick = (preset: DatePreset) => {
     const { start, end } = preset.getValue();
@@ -326,7 +333,11 @@ export default function HomePage() {
   };
 
   const getProcessingButtonText = () => {
-    if (!isProcessing) return "Process Emails";
+    if (!isProcessing) {
+      if (modelStatus === "waking") return "Models Loading...";
+      if (modelStatus === "error") return "Process Emails";
+      return "Process Emails";
+    }
 
     if (processingProgress) {
       return `${processingProgress.stage} ${processingProgress.percentage}%`;
@@ -335,8 +346,15 @@ export default function HomePage() {
     return "Processing...";
   };
 
+  const isButtonDisabled = isProcessing || modelStatus === "waking";
+
   return (
     <div className="flex flex-col min-h-screen">
+      {/* Model warmup banner - only shows when Gmail is connected */}
+      {isGmailConnected && (
+        <ModelStatusBanner onStatusChange={handleStatusChange} />
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border-b md:w-full w-screen gap-4">
         <div className="flex items-center space-x-4">
           <SidebarTrigger />
@@ -346,7 +364,7 @@ export default function HomePage() {
           {isGmailConnected && (
             <Button
               onClick={handleProcessEmails}
-              disabled={isProcessing}
+              disabled={isButtonDisabled}
               size="sm"
               className="relative w-full sm:w-auto overflow-hidden disabled:opacity-100"
             >
@@ -358,7 +376,7 @@ export default function HomePage() {
               )}
               <RefreshCw
                 className={`w-4 h-4 mr-2 relative z-10 ${
-                  isProcessing ? "animate-spin" : ""
+                  isProcessing || modelStatus === "waking" ? "animate-spin" : ""
                 }`}
               />
               <span className="truncate relative z-10">

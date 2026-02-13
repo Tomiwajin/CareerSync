@@ -250,7 +250,7 @@ export default function TermsPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
-                        <span>Must be at least 13 years old</span>
+                        <span>Meet Google&rsquo;s minimum age requirement</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
@@ -325,7 +325,7 @@ export default function TermsPage() {
                       <li>
                         • Use for commercial purposes without authorization
                       </li>
-                      <li>• Reverse engineer the application</li>
+                      <li>• Use automated tools to abuse the Service</li>
                     </ul>
                   </div>
                 </div>
@@ -590,6 +590,7 @@ export default function TermsPage() {
                     {[
                       "United States Law",
                       "CCPA Compliant",
+                      "GDPR Compliant",
                       "Google API Policy",
                     ].map((standard) => (
                       <Badge
