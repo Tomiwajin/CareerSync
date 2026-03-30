@@ -141,6 +141,7 @@ export default function HomePage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [isProcessing, setIsProcessing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [processError, setProcessError] = useState<string | null>(null);
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [processingProgress, setProcessingProgress] =
@@ -226,6 +227,7 @@ export default function HomePage() {
     }
 
     setFormError(null);
+    setProcessError(null);
 
     if (!isGmailConnected) {
       return;
@@ -249,6 +251,11 @@ export default function HomePage() {
           excludedEmails,
         }),
       });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.message || `Request failed (${response.status})`);
+      }
 
       if (!response.body) {
         throw new Error("No response body");
@@ -317,6 +324,9 @@ export default function HomePage() {
     } catch (error) {
       console.error("Failed to process emails:", error);
       setProcessingProgress(null);
+      setProcessError(
+        error instanceof Error ? error.message : "Something went wrong. Please try again."
+      );
     } finally {
       setIsProcessing(false);
     }
@@ -470,6 +480,11 @@ export default function HomePage() {
         {formError && (
           <div className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">
             {formError}
+          </div>
+        )}
+        {processError && (
+          <div className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">
+            {processError}
           </div>
         )}
       </div>

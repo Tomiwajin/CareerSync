@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { google, gmail_v1 } from "googleapis";
 import { cookies } from "next/headers";
+
 import { Client } from "@gradio/client";
 import { shouldExcludeEmail } from "@/lib/email-utils";
 
@@ -25,6 +26,10 @@ interface ProcessBatchResponse {
 
 // Reduced delay for better performance
 const BATCH_DELAY_MS = 150;
+
+// Per-user rate limiting (60s cooldown)
+const RATE_LIMIT_MS = 60_000;
+const lastRequestTime = new Map<string, number>();
 
 function sendProgress(
   encoder: TextEncoder,
@@ -155,6 +160,22 @@ async function fetchEmailsInBatches(
 }
 
 export async function POST(request: NextRequest) {
+  const cookieStore = await cookies();
+  const userId = cookieStore.get("user_id")?.value;
+
+  if (userId) {
+    const last = lastRequestTime.get(userId) ?? 0;
+    const elapsed = Date.now() - last;
+    if (elapsed < RATE_LIMIT_MS) {
+      const retryIn = Math.ceil((RATE_LIMIT_MS - elapsed) / 1000);
+      return NextResponse.json(
+        { message: `Please wait ${retryIn}s before processing again.` },
+        { status: 429 }
+      );
+    }
+    lastRequestTime.set(userId, Date.now());
+  }
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
